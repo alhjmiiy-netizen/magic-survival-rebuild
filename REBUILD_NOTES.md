@@ -39,3 +39,8 @@
 - `HUD.tsx`: portrait ring border + glow and hero name tag use `hero.color`.
 - QA: `/workspace/qa/cohesion.js` (dsf 3, clears spells/enemies for clean crops; menu screenshot | portrait | front/side/back). 844x390 + 390x844 touch, 10 heroes, 0 console errors. Shots: v5-cohesion-<hero>.png, -port.png, v5-cohesion-all.png.
 - Known: arena backdrop's cyan rune lines dominate crops regardless of hero (arena art, not hero); sprites remain ~50px chibi so portrait detail (armour plates, robe embroidery) is simplified.
+
+## Fix: Altar research resets (2026-11-03 PST)
+- Root cause: `UpgradeModal` kept ranks/points in component-local `useState(INITIAL_RESEARCH_ATTRIBUTES)` / `useState(3)`, nothing saved to localStorage, so every reopen/reload re-initialised to defaults. Gold was also run-local (engine started from `INITIAL_PLAYER_STATS.gold = 0`), so spent gold/bought points vanished and research never applied at run start.
+- Fix: `src/game/research.ts` — `ms_research_v1` {points, ranks, gold}; loaded on modal mount and app start, saved synchronously on every enhance/reset/buy; `applyResearch` applies purchased ranks (delta vs defaults: might/vitality/haste/snipe/agility/explorer/saturation) + gold wallet at engine init; App saves gold on change. Load merges/clamps (no wipe on unknown/partial data). No previous save existed to migrate.
+- Regression: `qa/research-persist.js <url> <shotdir> <tag>` (390x844 touch): buy point + 4 enhances, close/reopen, run start (effects + gold), reload.

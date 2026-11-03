@@ -3,6 +3,7 @@ import { X, RotateCcw, Plus, Circle, Check } from 'lucide-react';
 import { ResearchIcon } from './ResearchIcon';
 import { PlayerStats } from '../types/game';
 import { sound } from '../audio/soundEngine';
+import { loadResearch, saveResearch, applyRankDelta } from '../game/research';
 
 interface UpgradeModalProps {
   stats: PlayerStats;
@@ -56,58 +57,53 @@ export const INITIAL_RESEARCH_ATTRIBUTES: ResearchAttribute[] = [
 ];
 
 export const UpgradeModal: React.FC<UpgradeModalProps> = ({ stats, onUpdateStats, onClose }) => {
-  const [researchPoints, setResearchPoints] = useState<number>(3); // Available points
-  const [attributes, setAttributes] = useState<ResearchAttribute[]>(INITIAL_RESEARCH_ATTRIBUTES);
+  // Persisted: loaded from localStorage on every mount, saved synchronously on every change.
+  const [saved] = useState(loadResearch);
+  const [researchPoints, setResearchPoints] = useState<number>(saved.points);
+  const [attributes, setAttributes] = useState<ResearchAttribute[]>(() =>
+    INITIAL_RESEARCH_ATTRIBUTES.map((a) => ({ ...a, rank: saved.ranks[a.id] ?? a.rank }))
+  );
   const [selectedId, setSelectedId] = useState<string>('might');
   const [isPurchasing, setIsPurchasing] = useState(false);
 
   const selectedAttr = attributes.find((a) => a.id === selectedId) || attributes[0];
 
+  const commit = (attrs: ResearchAttribute[], points: number, gold: number) => {
+    setAttributes(attrs);
+    setResearchPoints(points);
+    saveResearch({ v: 1, points, gold, ranks: Object.fromEntries(attrs.map((a) => [a.id, a.rank])) });
+  };
+
   const handleEnhance = () => {
     if (researchPoints <= 0 || selectedAttr.rank >= selectedAttr.maxRank) return;
-
     sound.playLevelUp();
-    setResearchPoints((prev) => prev - 1);
-    setAttributes((prev) =>
-      prev.map((a) => (a.id === selectedAttr.id ? { ...a, rank: a.rank + 1 } : a))
-    );
-
-    // Apply to player stats
+    const next = attributes.map((a) => (a.id === selectedAttr.id ? { ...a, rank: a.rank + 1 } : a));
+    commit(next, researchPoints - 1, stats.gold);
     const updated = { ...stats };
-    if (selectedAttr.id === 'might') updated.spellPower += 5;
-    if (selectedAttr.id === 'vitality') {
-      updated.maxHp += 50;
-      updated.hp += 50;
-    }
-    if (selectedAttr.id === 'haste') updated.cooldownReduction = Math.min(60, updated.cooldownReduction + 3);
-    if (selectedAttr.id === 'snipe') updated.critChance += 2.5;
-    if (selectedAttr.id === 'agility') updated.speed += 0.15;
-    if (selectedAttr.id === 'explorer') updated.pickupRadius += 25;
+    applyRankDelta(updated, selectedAttr.id, 1);
     onUpdateStats(updated);
   };
 
   const handleReset = () => {
     sound.playItemUse();
-    // Count total spent points
+    const updated = { ...stats };
     let totalSpent = 0;
-    attributes.forEach((a) => {
-      totalSpent += a.rank;
-    });
-    setResearchPoints((prev) => prev + totalSpent);
-    setAttributes((prev) => prev.map((a) => ({ ...a, rank: 0 })));
+    attributes.forEach((a) => { totalSpent += a.rank; applyRankDelta(updated, a.id, -a.rank); });
+    commit(attributes.map((a) => ({ ...a, rank: 0 })), researchPoints + totalSpent, stats.gold);
+    onUpdateStats(updated);
   };
 
   const handleBuyPoint = () => {
     const cost = 1000;
     if (stats.gold >= cost) {
       sound.playLevelUp();
+      commit(attributes, researchPoints + 1, stats.gold - cost);
       onUpdateStats({ ...stats, gold: stats.gold - cost });
-      setResearchPoints((prev) => prev + 1);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black select-none font-sans animate-in fade-in duration-200">
+    <div data-modal="research" className="fixed inset-0 z-50 flex items-center justify-center bg-black select-none font-sans animate-in fade-in duration-200">
       {/* Container: Matches Screenshot_20261102_164046_Magic Survival */}
       <div className="relative w-full max-w-lg md:max-w-xl h-full max-h-[96vh] bg-black text-white flex flex-col justify-between overflow-hidden px-4 py-4 sm:px-6">
         
@@ -161,6 +157,8 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ stats, onUpdateStats
               return (
                 <button
                   key={attr.id}
+                  data-research={attr.id}
+                  data-rank={attr.rank}
                   onClick={() => {
                     sound.playItemUse();
                     setSelectedId(attr.id);

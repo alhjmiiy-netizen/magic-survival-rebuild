@@ -27,6 +27,7 @@ import type { UpgradeChoice } from './game/spells';
 import { InventoryModal } from './components/InventoryModal';
 import { SkillsModal } from './components/SkillsModal';
 import { UpgradeModal } from './components/UpgradeModal';
+import { applyResearch, loadResearch, saveGold } from './game/research';
 import { SettingsModal } from './components/SettingsModal';
 import { GameOverModal } from './components/GameOverModal';
 import { StoryModal } from './components/StoryModal';
@@ -62,7 +63,7 @@ export default function App() {
   const [currentArena, setCurrentArena] = useState<ArenaRealm>(ARENAS_LIST[0]);
 
   // Game state
-  const [stats, setStats] = useState<PlayerStats>(INITIAL_PLAYER_STATS);
+  const [stats, setStats] = useState<PlayerStats>(() => ({ ...INITIAL_PLAYER_STATS, gold: loadResearch().gold }));
   const [spells, setSpells] = useState<Spell[]>([]);
   const [pickingSpell, setPickingSpell] = useState(false);
   const [upgradeChoices, setUpgradeChoices] = useState<UpgradeChoice[]>([]);
@@ -161,6 +162,7 @@ export default function App() {
     );
 
     engine.currentHero = heroRef.current;
+    applyResearch(engine.stats); // persistent Altar research + saved gold wallet
     applyHeroBonuses(engine, null, heroRef.current);
     setStats({ ...engine.stats });
     engine.currentArena = currentArena;
@@ -332,11 +334,13 @@ export default function App() {
     }
   };
 
+  useEffect(() => { saveGold(stats.gold); }, [stats.gold]);
+
   const handleRestart = () => {
     setGameOverData(null);
     setIsPaused(false);
     setLevelUpLevel(null);
-    setStats(INITIAL_PLAYER_STATS);
+    setStats({ ...INITIAL_PLAYER_STATS, gold: loadResearch().gold });
     setSpells([]);
     setBeltItems(INITIAL_BELT_ITEMS);
     setQuests(INITIAL_QUESTS);
